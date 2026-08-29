@@ -1,8 +1,8 @@
 class LlmRedactProxy < Formula
   desc "Local PII/secret-redacting proxy for LLM APIs (regex floor + MLX OPF model)"
   homepage "https://github.com/CupOfGeo/llm-redact-proxy"
-  url "https://github.com/CupOfGeo/llm-redact-proxy/archive/refs/tags/v0.4.0.tar.gz"
-  sha256 "05040837ac9a1453bfcbbc7750708d4a75beef2793c50e2314107f6ca93fe7a9"
+  url "https://github.com/CupOfGeo/llm-redact-proxy/archive/refs/tags/v0.4.1.tar.gz"
+  sha256 "21ecdc811c18edf3e550ba602b1cbb5658393e42de42911fda98aa8055d1584a"
   license "MIT"
 
   depends_on "python@3.12"
