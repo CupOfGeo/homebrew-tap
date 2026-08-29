@@ -7,6 +7,9 @@ class LlmRedactProxy < Formula
 
   depends_on "python@3.12"
 
+  # Python extension modules keep their @rpath dylib IDs: they are loaded by
+  # path via dlopen, and several wheels (tiktoken) lack the Mach-O headerpad
+  # for brew's long absolute opt-path IDs — rewriting aborts the install.
   on_linux do
     disable! because: "the OPF model runs on MLX (Apple Silicon Metal)"
   end
@@ -15,6 +18,8 @@ class LlmRedactProxy < Formula
     disable! because: "the OPF model runs on MLX (Apple Silicon Metal)"
   end
 
+  preserve_rpath
+
   def install
     # One libexec venv, resolved by pip at install time. Deliberately not
     # per-resource pinned: mlx publishes wheels only (no sdist), tagged per
@@ -22,9 +27,6 @@ class LlmRedactProxy < Formula
     # hardcoding wheel URLs per OS. Fine for a personal tap; not core-style.
     system formula_opt_bin("python@3.12")/"python3.12", "-m", "venv", libexec
     system libexec/"bin/pip", "install", "--quiet", buildpath
-    # Wheels install their shared objects read-only; brew's post-install
-    # linkage pass needs to rewrite Mach-O IDs in the keg, so open them up.
-    system "chmod", "-R", "u+w", libexec
     bin.install_symlink libexec/"bin/redact-proxy"
     bin.install_symlink libexec/"bin/llm-redact-proxy"
   end
