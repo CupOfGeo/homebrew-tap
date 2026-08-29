@@ -22,6 +22,9 @@ class LlmRedactProxy < Formula
     # hardcoding wheel URLs per OS. Fine for a personal tap; not core-style.
     system formula_opt_bin("python@3.12")/"python3.12", "-m", "venv", libexec
     system libexec/"bin/pip", "install", "--quiet", buildpath
+    # Wheels install their shared objects read-only; brew's post-install
+    # linkage pass needs to rewrite Mach-O IDs in the keg, so open them up.
+    system "chmod", "-R", "u+w", libexec
     bin.install_symlink libexec/"bin/redact-proxy"
     bin.install_symlink libexec/"bin/llm-redact-proxy"
   end
