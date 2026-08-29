@@ -7,10 +7,11 @@ class LlmRedactProxy < Formula
 
   depends_on "python@3.12"
 
-  on_intel do
+  on_linux do
     disable! because: "the OPF model runs on MLX (Apple Silicon Metal)"
   end
-  on_linux do
+
+  on_intel do
     disable! because: "the OPF model runs on MLX (Apple Silicon Metal)"
   end
 
@@ -19,7 +20,7 @@ class LlmRedactProxy < Formula
     # per-resource pinned: mlx publishes wheels only (no sdist), tagged per
     # macOS release and CPython, so letting pip pick the right binary beats
     # hardcoding wheel URLs per OS. Fine for a personal tap; not core-style.
-    system Formula["python@3.12"].opt_bin/"python3.12", "-m", "venv", libexec
+    system formula_opt_bin("python@3.12")/"python3.12", "-m", "venv", libexec
     system libexec/"bin/pip", "install", "--quiet", buildpath
     bin.install_symlink libexec/"bin/redact-proxy"
     bin.install_symlink libexec/"bin/llm-redact-proxy"
