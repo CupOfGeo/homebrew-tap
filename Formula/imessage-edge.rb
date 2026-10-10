@@ -3,8 +3,8 @@ class ImessageEdge < Formula
 
   desc "Mac HTTP daemon exposing iMessage send/read to a remote orchestrator"
   homepage "https://github.com/CupOfGeo/imessage-edge"
-  url "https://github.com/CupOfGeo/imessage-edge/archive/refs/tags/v0.4.0.tar.gz"
-  sha256 "199d519f1a36dc6ef86e7485f62a1fd020bfa0253a7cbbc208cdd160f7215195"
+  url "https://github.com/CupOfGeo/imessage-edge/archive/refs/tags/v0.5.0.tar.gz"
+  sha256 "aff1f080133ae87eb5c87613ccfbed426938038cd60bf35091237369d05dfc84"
   license "MIT"
 
   depends_on "rust" => :build # pydantic-core builds via maturin (Rust)
