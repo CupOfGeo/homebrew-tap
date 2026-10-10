@@ -8,6 +8,7 @@ class ImessageEdge < Formula
   license "MIT"
 
   depends_on "rust" => :build # pydantic-core builds via maturin (Rust)
+  depends_on arch: :arm64 # the prebuilt launcher is arm64 with /opt/homebrew paths
   depends_on "python@3.14"
 
   on_linux do
@@ -16,6 +17,14 @@ class ImessageEdge < Formula
 
   # `resource` blocks for transitive Python deps will be inserted below by:
   #   brew update-python-resources CupOfGeo/tap/imessage-edge
+
+  # ImessageEdge.app: Developer ID signed and notarized at release time
+  # (an install can't sign) by launcher/build.sh. The release script
+  # rewrites this url/sha256.
+  resource "launcher" do
+    url "https://github.com/CupOfGeo/imessage-edge/releases/download/v0.5.0/ImessageEdge.app.zip"
+    sha256 "bc9fb13bb84b85cde0c65dede9815a5b4ee23a44c1ebf322221eb95450634dac"
+  end
 
   resource "annotated-doc" do
     url "https://files.pythonhosted.org/packages/57/ba/046ceea27344560984e26a590f90bc7f4a75b06701f653222458922b558c/annotated_doc-0.0.4.tar.gz"
@@ -113,20 +122,17 @@ class ImessageEdge < Formula
   end
 
   def install
-    virtualenv_install_with_resources
+    # The launcher has the python and config paths under /opt/homebrew
+    # compiled in.
+    odie "imessage-edge requires the default /opt/homebrew prefix" if HOMEBREW_PREFIX.to_s != "/opt/homebrew"
 
-    # imessage-edged is the binary that holds Full Disk Access. It spawns
-    # the venv python as a child, which inherits the grant; python itself
-    # gets none, so `python -c …` can't borrow it. The python and config
-    # paths are compiled in so nothing can be steered through
-    # `launchctl setenv`. See launcher/imessage-edged.c in the source.
-    launcher = libexec/"bin/imessage-edged"
-    system ENV.cc, "-O2", "-o", launcher,
-           "-DEDGE_PYTHON=\"#{libexec}/bin/python\"",
-           "-DEDGE_CONFIG=\"#{etc}/imessage-edge/config.env\"",
-           "launcher/imessage-edged.c"
-    # Hardened runtime: dyld ignores DYLD_* in the process holding FDA.
-    system "codesign", "--force", "--sign", "-", "--options", "runtime", launcher
+    virtualenv_install_with_resources without: "launcher"
+
+    # ImessageEdge.app holds Full Disk Access and spawns the venv python,
+    # which inherits the grant; python itself gets none. TCC keys the
+    # grant on the bundle id + Team ID, so it survives upgrades.
+    # Staging cds into the zip's lone ImessageEdge.app directory.
+    resource("launcher").stage { (libexec/"ImessageEdge.app").install "Contents" }
 
     # Template lives in pkgshare (cellar) — not etc — so reinstalls can
     # refresh it without brew refusing to overwrite "user config".
@@ -188,22 +194,15 @@ class ImessageEdge < Formula
       macOS will prompt for Automation permission (Messages.app) on the
       first send.
 
-      To read chat.db, grant Full Disk Access to the daemon binary:
-        #{opt_libexec}/bin/imessage-edged
+      To read chat.db, grant Full Disk Access once to:
+        #{opt_libexec}/ImessageEdge.app
       under System Settings -> Privacy & Security -> Full Disk Access.
-      It will appear in the FDA list as "imessage-edged".
-
-      "imessage-edged" is a small launcher that starts the daemon; the
-      grant covers the daemon it starts, not Python in general.
-
-      Note: macOS records the resolved versioned cellar path, so this
-      grant is silently dropped on `brew upgrade`. Re-grant after each
-      upgrade and restart the service.
+      The grant follows the app's signature, so it survives upgrades.
     CAVEATS
   end
 
   service do
-    run [opt_libexec/"bin/imessage-edged"]
+    run [opt_libexec/"ImessageEdge.app/Contents/MacOS/imessage-edged"]
     keep_alive true
     run_at_load true
     log_path var/"log/imessage-edge.log"
@@ -212,7 +211,7 @@ class ImessageEdge < Formula
   end
 
   test do
-    assert_path_exists libexec/"bin/imessage-edged"
+    assert_path_exists libexec/"ImessageEdge.app/Contents/MacOS/imessage-edged"
     system libexec/"bin/python", "-c", "import imessage_edge"
   end
 end
