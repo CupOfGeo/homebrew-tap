@@ -113,50 +113,20 @@ class ImessageEdge < Formula
   end
 
   def install
-    # Build the venv manually (not virtualenv_install_with_resources)
-    # so we can pass --copies:
-    #   --copies so the python stub is a unique Mach-O (not a symlink to
-    #      the shared Homebrew framework binary). Lets macOS Full Disk
-    #      Access scope to *this* daemon's python rather than every
-    #      brew-managed python@3.14 invocation on the system. (TCC keys on
-    #      the main executable's CDHash, not the loaded dylibs, so the
-    #      stub copy is what matters even though libpython is shared.)
-    system formula_opt_bin("python@3.14")/"python3.14",
-           "-m", "venv", "--copies", "--without-pip", libexec
+    virtualenv_install_with_resources
 
-    venv = Language::Python::Virtualenv::Virtualenv.new(self, libexec, "python3.14")
-    venv.pip_install resources
-    venv.pip_install_and_link buildpath
-
-    # Rename the python stub so macOS Full Disk Access lists this app
-    # under a recognizable name ("imessage-edged") rather than a generic
-    # "python" / "python3.14". macOS TCC attributes FDA grants to the
-    # *path used to exec* the binary (not the resolved Mach-O), so
-    # launchd has to invoke "imessage-edged" directly — hence the rename
-    # plus the entry-script shebang fixup below.
-    mv libexec/"bin/python3.14", libexec/"bin/imessage-edged"
-
-    # Keep python / python3 / python3.14 as compat symlinks so dep CLIs
-    # installed by pip (uvicorn, fastapi, etc.) keep resolving their
-    # shebangs through "python" → imessage-edged.
-    [libexec/"bin/python", libexec/"bin/python3"].each do |sym|
-      rm sym if sym.exist? || sym.symlink?
-      ln_s "imessage-edged", sym
-    end
-    ln_s "imessage-edged", libexec/"bin/python3.14"
-
-    # Bypass the "python" symlink in the daemon's own shebang so launchd
-    # execs imessage-edged directly. The compat symlinks above stay in
-    # place for any other tooling that looks up by the python name.
-    inreplace libexec/"bin/imessage-edge",
-              /\A#![^\n]+/,
-              "#!#{libexec}/bin/imessage-edged"
-
-    # No bash launcher: launchd runs the python entry point directly so
-    # macOS TCC attributes chat.db reads to *imessage-edged* (which has
-    # Full Disk Access granted), not to a parent shell. The service block
-    # below passes IMESSAGE_EDGE_CONFIG; pydantic-settings reads the env
-    # file from that path on its own.
+    # imessage-edged is the binary that holds Full Disk Access. It spawns
+    # the venv python as a child, which inherits the grant; python itself
+    # gets none, so `python -c …` can't borrow it. The python and config
+    # paths are compiled in so nothing can be steered through
+    # `launchctl setenv`. See launcher/imessage-edged.c in the source.
+    launcher = libexec/"bin/imessage-edged"
+    system ENV.cc, "-O2", "-o", launcher,
+           "-DEDGE_PYTHON=\"#{libexec}/bin/python\"",
+           "-DEDGE_CONFIG=\"#{etc}/imessage-edge/config.env\"",
+           "launcher/imessage-edged.c"
+    # Hardened runtime: dyld ignores DYLD_* in the process holding FDA.
+    system "codesign", "--force", "--sign", "-", "--options", "runtime", launcher
 
     # Template lives in pkgshare (cellar) — not etc — so reinstalls can
     # refresh it without brew refusing to overwrite "user config".
@@ -223,8 +193,8 @@ class ImessageEdge < Formula
       under System Settings -> Privacy & Security -> Full Disk Access.
       It will appear in the FDA list as "imessage-edged".
 
-      "imessage-edged" is a renamed copy of python3.14 — macOS scopes
-      FDA to *this* daemon only (not other Homebrew Python tools).
+      "imessage-edged" is a small launcher that starts the daemon; the
+      grant covers the daemon it starts, not Python in general.
 
       Note: macOS records the resolved versioned cellar path, so this
       grant is silently dropped on `brew upgrade`. Re-grant after each
@@ -233,8 +203,7 @@ class ImessageEdge < Formula
   end
 
   service do
-    run [opt_bin/"imessage-edge"]
-    environment_variables IMESSAGE_EDGE_CONFIG: "#{HOMEBREW_PREFIX}/etc/imessage-edge/config.env"
+    run [opt_libexec/"bin/imessage-edged"]
     keep_alive true
     run_at_load true
     log_path var/"log/imessage-edge.log"
@@ -243,8 +212,7 @@ class ImessageEdge < Formula
   end
 
   test do
-    assert_path_exists bin/"imessage-edge"
-    assert_path_exists libexec/"bin/imessage-edge"
+    assert_path_exists libexec/"bin/imessage-edged"
     system libexec/"bin/python", "-c", "import imessage_edge"
   end
 end
